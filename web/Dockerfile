@@ -1,7 +1,9 @@
 # 多阶段构建：Node 构建前端，nginx 托管静态产物
 
 # ---------- 构建阶段 ----------
-FROM node:22-alpine AS build
+# 注意：Node 22/24 的 Alpine(musl) 镜像存在 npm 已知缺陷，npm ci/install 会稳定触发
+# "Exit handler never called!" 崩溃（2026 仍 open）。改用 glibc 的 Debian 镜像可根治。
+FROM node:26-slim AS build
 WORKDIR /web
 # 通过环境变量注入 npm 配置：国内镜像 + 重试/超时
 # 避免构建时偶发网络抖动触发 npm 内部 "Exit handler never called" 崩溃
@@ -17,7 +19,7 @@ COPY . .
 RUN npm run build
 
 # ---------- 运行时阶段 ----------
-FROM nginx:1.27-alpine
+FROM nginx:1.30.4-alpine
 COPY --from=build /web/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
