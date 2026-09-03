@@ -1,6 +1,6 @@
 services:
   mysql:
-    image: mysql:5.7
+    image: mysql:8.0
     container_name: boat-mysql
     restart: unless-stopped
     environment:
@@ -16,7 +16,7 @@ services:
       - boat-net
 
   redis:
-    image: redis:6.2
+    image: redis:7-alpine
     container_name: boat-redis
     restart: unless-stopped
     # 与后端 config.yaml 中 redis.password 保持一致
