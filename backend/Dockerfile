@@ -4,6 +4,9 @@
 # ---------- 构建阶段 ----------
 FROM golang:1.24 AS builder
 WORKDIR /build
+# Go 模块代理：默认国内镜像 goproxy.cn，可由 compose build.args 覆盖
+ARG GOPROXY=https://goproxy.cn,direct
+ENV GOPROXY=${GOPROXY}
 # 先拉取依赖，利用 Docker 层缓存
 COPY go.mod go.sum ./
 RUN go mod download

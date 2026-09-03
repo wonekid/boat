@@ -30,6 +30,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # Go 模块代理（国内镜像，加速 go mod download；默认 goproxy.cn）
+      args:
+        GOPROXY: "https://goproxy.cn,direct"
     container_name: boat-backend
     restart: unless-stopped
     # 通过环境变量覆盖 config.yaml 中的 mysql/redis 主机（前缀 BOAT_，见 config.go）
