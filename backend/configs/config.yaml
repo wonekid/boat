@@ -1,0 +1,47 @@
+server:
+  port: 8080
+  mode: debug # debug | release
+
+mysql:
+  host: 192.168.1.100
+  port: 3306
+  username: root
+  password: Root@123456
+  database: boat
+  charset: utf8mb4
+  # 连接池
+  max-idle-conns: 10
+  max-open-conns: 100
+  log-mode: true
+
+redis:
+  host: 192.168.1.100
+  port: 6379
+  password: "123456"
+  db: 0
+
+jwt:
+  secret: "SEVMTE9XT1JTREZAIykoIzIzMjMyCg=="
+  expire-hours: 24
+
+bastion:
+  # SSH 堡垒机监听端口
+  port: 2222
+  host-key-path: "configs/ssh_host_key"
+
+# 会话录像存储根目录
+record:
+  path: "data/records"
+
+log:
+  level: info
+  path: "logs"
+
+# 安全：IP 白名单（网络层入口限制，覆盖页面与全部接口）
+# 默认关闭；开启后仅允许列表内的 IP/网段访问，其余一律 403。
+# 支持精确 IP（192.168.1.10）或 CIDR 网段（192.168.1.0/24）。
+security:
+  ip-whitelist-enabled: false
+  ip-whitelist:
+    - 127.0.0.1
+    - 192.168.1.0/24

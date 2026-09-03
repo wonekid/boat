@@ -1,0 +1,75 @@
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:5.7
+    container_name: boat-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: Root@123456
+      MYSQL_DATABASE: boat
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - boat-mysql-data:/var/lib/mysql
+    networks:
+      - boat-net
+
+  redis:
+    image: redis:6.2
+    container_name: boat-redis
+    restart: unless-stopped
+    # 与后端 config.yaml 中 redis.password 保持一致
+    command: redis-server --requirepass 123456
+    ports:
+      - "6379:6379"
+    networks:
+      - boat-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: boat-backend
+    restart: unless-stopped
+    # 通过环境变量覆盖 config.yaml 中的 mysql/redis 主机（前缀 BOAT_，见 config.go）
+    environment:
+      BOAT_MYSQL_HOST: mysql
+      BOAT_MYSQL_PORT: "3306"
+      BOAT_REDIS_HOST: redis
+      BOAT_REDIS_PORT: "6379"
+    ports:
+      - "8080:8080"   # HTTP API
+      - "2222:2222"   # SSH 堡垒机
+    depends_on:
+      - mysql
+      - redis
+    volumes:
+      - boat-logs:/app/logs
+      - boat-records:/app/data/records
+    networks:
+      - boat-net
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: boat-web
+    restart: unless-stopped
+    ports:
+      - "8088:80"     # 前端访问入口（避免与宿主机 80 冲突）
+    depends_on:
+      - backend
+    networks:
+      - boat-net
+
+volumes:
+  boat-mysql-data:
+  boat-logs:
+  boat-records:
+
+networks:
+  boat-net:
+    driver: bridge

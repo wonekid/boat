@@ -1,0 +1,8 @@
+.git
+*.md
+web
+data
+logs
+configs/rsa_key
+configs/ssh_host_key
+*.exe
