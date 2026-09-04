@@ -23,6 +23,22 @@ import (
 
 // ============ 执行机节点（OSP Agent） ============
 
+// AgentPublicKey 返回服务端 RSA 公钥的明文 PEM（与握手签名所用私钥成对）。
+// 用于执行机侧获取 `server.pem`：直接取「正在运行的服务端」的公钥，
+// 规避宿主机与容器内 configs/rsa_key 不一致导致的验签失败。
+func AgentPublicKey(c *gin.Context) {
+	pem, err := utils.PublicKeyPEM()
+	if err != nil {
+		utils.Fail(c, "服务端 RSA 公钥未就绪: "+err.Error())
+		return
+	}
+	c.Header("Content-Type", "application/x-pem-file")
+	c.Header("Content-Disposition", "inline")
+	c.String(http.StatusOK, pem)
+}
+
+
+
 // ListAgentNodes 节点列表（含实时状态与指标）
 func ListAgentNodes(c *gin.Context) {
 	page, pageSize := utils.ParsePage(c.Query("page"), c.Query("pageSize"))

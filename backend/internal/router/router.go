@@ -133,6 +133,7 @@ func Register(r *gin.Engine) {
 		auth.POST("/agent/nodes/:id/reset-token", controller.ResetAgentNodeToken)
 		auth.POST("/agent/nodes/:id/disconnect", controller.DisconnectAgentNode)
 		auth.GET("/agent/nodes/:id/install", controller.GetAgentNodeInstall)
+		auth.GET("/agent/pubkey", controller.AgentPublicKey) // 明文 PEM，供执行机获取 server.pem
 		auth.GET("/agent/scripts", controller.AgentScriptList)
 		auth.GET("/agent/tasks", controller.ListAgentTasks)
 		auth.POST("/agent/tasks", controller.CreateAgentTask)
