@@ -151,6 +151,19 @@ func serve(ctx context.Context, cfg *Config, sys SysInfo, pubKey []byte) error {
 	log.Printf("[agent] 握手成功：节点 %s(id=%d) 会话 %s，心跳 %ds，加密通道已建立(AES-256-GCM)",
 		welcome.NodeName, welcome.NodeID, welcome.SessionID, hb)
 
+	// 握手后：清除握手阶段设置的整体 deadline，并启用 TCP keepalive 检测死连接。
+	// 服务端空闲时不会主动向 agent 发帧，故 agent 侧不设置应用层读超时，
+	// 否则静默期会被误判为断线；server 优雅关闭会发 FIN、崩溃/网络中断由 keepalive 探测。
+	_ = conn.SetDeadline(time.Time{})
+	if tc, ok := conn.(*net.TCPConn); ok {
+		_ = tc.SetKeepAlive(true)
+		_ = tc.SetKeepAlivePeriod(15 * time.Second)
+	}
+
+	// 会话级 context：连接结束（serve 返回）时取消，停止心跳协程，避免泄漏。
+	sessionCtx, sessionCancel := context.WithCancel(ctx)
+	defer sessionCancel()
+
 	exec := newExecutor(cfg)
 	writeMu := new(sync.Mutex)
 	send := func(msgType string, payload interface{}) error {
@@ -164,14 +177,14 @@ func serve(ctx context.Context, cfg *Config, sys SysInfo, pubKey []byte) error {
 		return osp.WriteFrame(conn, sess, env)
 	}
 
-	// 心跳协程：上报实时指标
+	// 心跳协程：上报实时指标（监听 sessionCtx，连接结束即停止）
 	go func() {
 		ticker := time.NewTicker(time.Duration(hb) * time.Second)
 		defer ticker.Stop()
 		sendHeartbeat(send)
 		for {
 			select {
-			case <-ctx.Done():
+			case <-sessionCtx.Done():
 				return
 			case <-ticker.C:
 				sendHeartbeat(send)
@@ -179,15 +192,12 @@ func serve(ctx context.Context, cfg *Config, sys SysInfo, pubKey []byte) error {
 		}
 	}()
 
-	// 读循环：接收任务
+	// 读循环：接收任务（阻塞读；连接断开/超时由底层 TCP 感知，返回即结束本次会话）
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		default:
-		}
-		if err := conn.SetReadDeadline(time.Now().Add(time.Duration(hb)*3*time.Second + 30*time.Second)); err != nil {
-			return err
 		}
 		env, err := osp.ReadFrame(conn, sess)
 		if err != nil {

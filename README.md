@@ -195,7 +195,11 @@ boat是一个基于 Go 语言开发的企业级运维管理系统，提供主机
 #### 接入与部署
 1. **控制台创建节点**：在「执行机管控 → 节点」点击新增，填写名称/标签，保存后获得 `token` 与控制台地址 `SERVER:9090`。
 2. **下载 agent 二进制**：控制台提供 Linux / Windows / macOS（amd64 / arm64）构建产物下载（`backend/cmd/agent`，也可 `go build ./cmd/agent` 自行交叉编译）。
-3. **执行机部署**：
+3. **获取服务端公钥 `server.pem`**（用于校验握手签名、防中间人）—— 三种任选其一：
+   - **控制台 API**：`GET /api/agent/nodes/:id/install`，返回 JSON 的 `publicKey` 字段即为 PEM 内容，保存到执行机的 `/opt/osp-agent/server.pem`。
+   - **一键安装脚本**：同一接口的 `script` 字段已自带写入 `server.pem` 并自动注入 `agent.yaml` 的 `server-pubkey` 配置（见下方「方式一」即用此脚本）。
+   - **服务端手动导出**（控制台主机上）：`openssl rsa -in configs/rsa_key -pubout -out /opt/osp-agent/server.pem`，再把该文件分发到执行机。`configs/rsa_key` 是服务端启动后自动生成/加载的 RSA 私钥，`server.pem` 即其对应的公钥。
+4. **执行机部署**：
    ```bash
    # 方式一：配置文件
    cat > /opt/osp-agent/agent.yaml <<'EOF'

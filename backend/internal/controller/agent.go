@@ -272,7 +272,7 @@ func pubKeyPemBlock(pubKey, nodeName string) string {
 	if strings.TrimSpace(pubKey) == "" {
 		return ""
 	}
-	return fmt.Sprintf("cat > \"/opt/osp-agent/server.pub\" <<'PUBEOF'\n%sPUBEOF\nsed -i 's|^token:|server-pubkey: \"/opt/osp-agent/server.pub\"\\ntoken:|' \"/opt/osp-agent/agent.yaml\"\n", pubKey)
+	return fmt.Sprintf("cat > \"/opt/osp-agent/server.pem\" <<'PUBEOF'\n%sPUBEOF\nsed -i 's|^token:|server-pubkey: \"/opt/osp-agent/server.pem\"\\ntoken:|' \"/opt/osp-agent/agent.yaml\"\n", pubKey)
 }
 
 // ============ 任务下发 ============
