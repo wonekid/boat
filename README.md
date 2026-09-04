@@ -4,6 +4,8 @@
 
 boat是一个基于 Go 语言开发的企业级运维管理系统，提供主机管理、SSH 堡垒机、Web Terminal、会话录像与审计等功能。系统采用前后端分离架构，支持多种认证方式和细粒度的权限控制。
 
+![alt text](images/image.png)
+
 ### 核心特性
 
 - 🖥️ **Web Terminal** - 浏览器直接连接 SSH，支持 xterm.js 全功能终端
