@@ -33,8 +33,8 @@
         <el-option label="离线" value="offline" />
       </el-select>
       <el-switch v-model="autoRefresh" active-text="自动刷新" />
-      <el-tag v-if="wsOk" type="success" size="small">实时通道已连接</el-tag>
-      <el-tag v-else type="info" size="small">实时通道未连接（轮询兜底）</el-tag>
+      <el-tag v-if="wsOk" type="success" size="small">实时通道已连接（后台异步对账）</el-tag>
+      <el-tag v-else type="info" size="small">实时通道未连接（后台异步刷新中）</el-tag>
       <span class="tip">
         执行机上的 <code>osp-agent</code> 主动外连控制台 OSP 端口，无需开放入站端口；
         SSH 无法登录（密码过期 / 账户锁定 / sshd 异常）时仍可下发命令与脚本。
@@ -296,13 +296,10 @@ let ws: WebSocket | null = null
 onMounted(async () => {
   await Promise.all([load(), loadOverview(), loadNodes(), loadScripts()])
   connectWS()
+  // 后台异步自动刷新：静默拉取，不触发整表 loading 遮罩，不打断用户操作
   timer = setInterval(() => {
     if (!autoRefresh.value) return
-    // 实时通道不可用时以轮询兜底
-    if (!wsOk.value) {
-      load()
-      loadOverview()
-    }
+    backgroundRefresh()
   }, 5000)
 })
 
@@ -322,6 +319,23 @@ async function load() {
     total.value = res.total || 0
   } finally {
     loading.value = false
+  }
+}
+
+// backgroundRefresh 后台静默刷新：供自动刷新定时器调用，不设置 loading，
+// 不打断用户正在进行的操作（如翻页、编辑弹窗），仅异步对账最新数据。
+// 用户手动触发的 load() 进行中时跳过，避免覆盖其 loading 态。
+async function backgroundRefresh() {
+  if (loading.value) return
+  try {
+    const res = await api.listAgentNodes({
+      page: page.value, pageSize: pageSize.value, keyword: keyword.value, status: status.value,
+    })
+    list.value = res.list || []
+    total.value = res.total || 0
+    overview.value = await api.agentOverview()
+  } catch (e) {
+    // 后台刷新失败静默忽略（多为服务未启动/网络抖动）；WS 重连或下次周期会再尝试
   }
 }
 
