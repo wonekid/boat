@@ -27,6 +27,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'task/execution', name: 'Execution', component: () => import('@/views/task/execution.vue'), meta: { title: '任务执行', perm: 'task:execution:list' } },
       { path: 'task/schedule', name: 'Schedule', component: () => import('@/views/task/schedule.vue'), meta: { title: '定时任务', perm: 'task:schedule:list' } },
       { path: 'task/approval', name: 'Approval', component: () => import('@/views/task/approval.vue'), meta: { title: '操作审批', perm: 'task:approval:approve' } },
+      { path: 'agent/node', name: 'AgentNode', component: () => import('@/views/agent/node.vue'), meta: { title: '执行机节点', perm: 'agent:node:list' } },
+      { path: 'agent/task', name: 'AgentTask', component: () => import('@/views/agent/task.vue'), meta: { title: 'Agent任务下发', perm: 'agent:task:list' } },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/dashboard' },

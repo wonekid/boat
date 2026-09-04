@@ -122,8 +122,28 @@ func Register(r *gin.Engine) {
 
 		// 仪表盘
 		auth.GET("/dashboard", controller.Dashboard)
+
+		// OSP Agent 执行机管控（自定义端口加密协议通道）
+		auth.GET("/agent/overview", controller.AgentOverview)
+		auth.GET("/agent/nodes", controller.ListAgentNodes)
+		auth.POST("/agent/nodes", controller.CreateAgentNode)
+		auth.GET("/agent/nodes/:id", controller.GetAgentNode)
+		auth.PUT("/agent/nodes/:id", controller.UpdateAgentNode)
+		auth.DELETE("/agent/nodes/:id", controller.DeleteAgentNode)
+		auth.POST("/agent/nodes/:id/reset-token", controller.ResetAgentNodeToken)
+		auth.POST("/agent/nodes/:id/disconnect", controller.DisconnectAgentNode)
+		auth.GET("/agent/nodes/:id/install", controller.GetAgentNodeInstall)
+		auth.GET("/agent/scripts", controller.AgentScriptList)
+		auth.GET("/agent/tasks", controller.ListAgentTasks)
+		auth.POST("/agent/tasks", controller.CreateAgentTask)
+		auth.GET("/agent/tasks/:id", controller.GetAgentTask)
+		auth.POST("/agent/tasks/:id/cancel", controller.CancelAgentTask)
+		auth.POST("/agent/tasks/:id/retry", controller.RetryAgentTaskFailed)
 	}
 
 	// WebSocket（令牌经 query 传递，由 handler 内部校验）
 	api.GET("/ws/terminal", controller.TerminalWS)
+	api.GET("/ws/agent", controller.AgentMonitorWS)
+	// Agent 二进制下载（令牌经 query 传递）
+	api.GET("/agent/download/:name", controller.DownloadAgent)
 }

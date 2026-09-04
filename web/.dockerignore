@@ -2,3 +2,5 @@
 *.md
 web/node_modules
 web/dist
+backend/data
+backend/dist

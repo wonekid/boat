@@ -110,6 +110,23 @@ const api = {
   rejectApproval: (id: any, d: any) => request.post(`/approvals/${id}/reject`, d).then((r) => r.data),
   cancelApproval: (id: any) => request.post(`/approvals/${id}/cancel`).then((r) => r.data),
 
+  // OSP Agent 执行机管控（自定义端口加密协议通道）
+  agentOverview: () => request.get('/agent/overview').then((r) => r.data),
+  listAgentNodes: (p: any) => request.get('/agent/nodes', { params: p }).then((r) => r.data),
+  getAgentNode: (id: any) => request.get(`/agent/nodes/${id}`).then((r) => r.data),
+  createAgentNode: (d: any) => request.post('/agent/nodes', d).then((r) => r.data),
+  updateAgentNode: (id: any, d: any) => request.put(`/agent/nodes/${id}`, d).then((r) => r.data),
+  deleteAgentNode: (id: any) => request.delete(`/agent/nodes/${id}`).then((r) => r.data),
+  resetAgentToken: (id: any) => request.post(`/agent/nodes/${id}/reset-token`).then((r) => r.data),
+  disconnectAgent: (id: any) => request.post(`/agent/nodes/${id}/disconnect`).then((r) => r.data),
+  agentInstall: (id: any) => request.get(`/agent/nodes/${id}/install`).then((r) => r.data),
+  agentScripts: () => request.get('/agent/scripts').then((r) => r.data),
+  listAgentTasks: (p: any) => request.get('/agent/tasks', { params: p }).then((r) => r.data),
+  createAgentTask: (d: any) => request.post('/agent/tasks', d).then((r) => r.data),
+  getAgentTask: (id: any) => request.get(`/agent/tasks/${id}`).then((r) => r.data),
+  cancelAgentTask: (id: any) => request.post(`/agent/tasks/${id}/cancel`).then((r) => r.data),
+  retryAgentTask: (id: any) => request.post(`/agent/tasks/${id}/retry`).then((r) => r.data),
+
   // 仪表盘
   dashboard: () => request.get('/dashboard').then((r) => r.data),
 }

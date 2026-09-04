@@ -13,6 +13,8 @@ RUN go mod download
 COPY . .
 # 静态编译，便于在 slim 镜像中直接运行
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /boat ./cmd/server
+# osp-agent：部署到执行机的代理程序（同时产出到 /app/dist 供控制台「接入指引」脚本下载）
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /osp-agent ./cmd/agent
 
 # ---------- 运行时阶段 ----------
 FROM python:3.12-slim
@@ -23,10 +25,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 # 拷贝编译产物与配置
 COPY --from=builder /boat /usr/local/bin/boat
+COPY --from=builder /osp-agent /app/dist/osp-agent
 COPY configs /app/configs
 # RSA 密钥、堡垒机密钥、录像与日志在运行时由程序自动生成/写入，确保目录可写
 RUN mkdir -p /app/data/records /app/logs \
     && chmod -R 777 /app/configs /app/data /app/logs
-EXPOSE 8080 2222
+EXPOSE 8080 2222 9090
 ENTRYPOINT ["boat"]
 CMD ["-c", "configs/config.yaml"]

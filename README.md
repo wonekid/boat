@@ -13,8 +13,8 @@ boat是一个基于 Go 语言开发的企业级运维管理系统，提供主机
 - 👥 **权限管理** - 基于 Casbin 的 RBAC 权限控制，支持细粒度资源授权
 - 🔑 **凭证管理** - 支持密码和密钥两种认证方式，凭证加密存储
 - 📊 **审计日志** - 完整的操作日志记录，支持日志查询和导出
-- python3脚本的上传、下发、定时任务执行调度、指定机器执行脚本、命令任务
-- 下发上传agent程序管理节点命令、脚本任务
+- 🤖 **OSP Agent 执行机管控** - 自研 OSP 加密协议（自定义端口 9090）：执行机 `osp-agent` 主动反连控制台长连接常驻，控制台下发命令/脚本任务并回收标准输出与退出码，实时监控节点存活与 CPU/内存/磁盘/负载/运行时长（详见 §22）
+- 🆘 **应急控制通道** - SSH 登录不进去时（用户密码过期、账户被锁定、sshd 配置错误、sudoers 损坏、防火墙误封），只要 `osp-agent` 进程存活，控制台仍可通过加密通道下发修复命令/脚本，实现"无登录管控"
 
 
 ---
@@ -171,6 +171,88 @@ boat是一个基于 Go 语言开发的企业级运维管理系统，提供主机
 - 白名单为前置拦截中间件，在鉴权之前生效；命中失败时统一返回 `403 IP 不在白名单，拒绝访问`
 - 启用时务必将自身管理 IP 纳入白名单，否则会被一并拒绝（fail-closed）
 
+### 22. OSP Agent 执行机管控
+
+为执行机（被管节点）提供一条**独立于 SSH 的加密反向管控通道**。控制台监听自定义端口（默认 `9090`）上的自研 **OSP（Ops Service Protocol）** 协议；执行机上的 `osp-agent` 以系统服务常驻，主动外连控制台建立加密长连接，待命接收下发的命令/脚本任务并执行、回传结果，同时周期性上报心跳与系统指标。
+
+与「任务执行 / 定时任务」（基于 SSH 直连目标主机）的本质区别：**OSP 通道由执行机主动外连，控制台无需掌握执行机账号密码**，因此即使执行机 SSH 已不可用，只要 agent 进程存活，控制台依旧能下发指令。
+
+#### 协议与安全
+- **传输层**：自定义 TCP 端口（与 HTTP 8080、SSH 堡垒机 2222 完全隔离），非标准协议，抗扫描与未授权接入。
+- **身份认证**：接入令牌（token）+ 节点注册信息；令牌由控制台生成、可一键重置、可强制踢下线。
+- **密钥协商**：握手阶段 ECDH P-256 协商会话密钥，HKDF-SHA256（salt=`nonceA||nonceB`、info=`boat-osp-v1|token`）派生 32 字节密钥。
+- **加密传输**：会话内所有帧经 **AES-256-GCM** 加密，帧头 `seq` 参与 AAD 校验且严格递增，防重放、防篡改。
+- **防中间人**：服务端用 RSA-PSS 对 `nonceA||nonceB||ecdhPubB` 签名，agent 端可配置服务端公钥（`server-pubkey`）校验签名，未配置时告警提示（内网测试可用 `-insecure` 跳过）。
+- **帧格式**：握手前明文帧 `[4B 长度][1B flag=0][JSON]`；握手后加密帧 `[4B 长度][1B flag=1][8B seq][12B nonce][密文+16B GCM tag]`；单帧上限 8MB。
+
+#### 控制台能力
+- **节点管理**：列表 / 详情 / 新增 / 编辑 / 删除；一键重置接入令牌、强制踢下线（断开当前连接）。
+- **实时状态监控**：通过 WebSocket 实时推送节点上下线、心跳指标（CPU / 内存 / 磁盘使用率、系统负载、运行时长），前端「执行机节点」页以卡片 + 状态点 + 进度条呈现；超过 `offline-after`（默认 35s）未心跳自动判定离线。
+- **任务下发**：向单个 / 多个节点下发「执行命令」或「执行脚本」任务（支持 Shell / Python / PowerShell 三种语言，脚本内容内联或引用脚本库）；可指定超时（默认 60s，上限 600s）、运行超时自动终止；支持手动取消在途任务。
+- **结果回收**：每个任务的 stdout / stderr / 退出码 / 执行时长 / 状态（pending/running/success/failed/timeout/cancelled）回传控制台，可在「任务」页查看详情；审计日志留痕。
+- **应急工具箱**：内置场景化命令模板（见下方典型场景），快速生成下发内容。
+
+#### 接入与部署
+1. **控制台创建节点**：在「执行机管控 → 节点」点击新增，填写名称/标签，保存后获得 `token` 与控制台地址 `SERVER:9090`。
+2. **下载 agent 二进制**：控制台提供 Linux / Windows / macOS（amd64 / arm64）构建产物下载（`backend/cmd/agent`，也可 `go build ./cmd/agent` 自行交叉编译）。
+3. **执行机部署**：
+   ```bash
+   # 方式一：配置文件
+   cat > /opt/osp-agent/agent.yaml <<'EOF'
+   server: 10.0.0.1:9090      # 控制台 OSP 地址
+   token:  osp_xxxxxxxxxxxx   # 控制台下发的接入令牌
+   name:   web-prod-01        # 节点名称（留空用主机名）
+   labels: web,prod           # 标签（逗号分隔）
+   heartbeat: 10              # 心跳周期（秒），服务端可覆盖
+   server-pubkey: /opt/osp-agent/server.pem  # 服务端 RSA 公钥（校验握手签名，防中间人）
+   EOF
+   /opt/osp-agent/osp-agent -c /opt/osp-agent/agent.yaml
+
+   # 方式二：环境变量（容器/K8s 友好）
+   OSP_SERVER=10.0.0.1:9090 OSP_TOKEN=osp_xxxxxxxxxxxx osp-agent
+   ```
+   建议以 systemd 常驻（断线指数退避 1s→60s 自动重连）。
+4. **验证**：控制台「执行机节点」页出现该节点为 `online`，即通道就绪。
+
+#### 典型场景：账号异常导致无法 SSH 登录
+执行机登录用户**密码过期**或**账户被锁定**（`passwd -l` / `usermod -L` / PAM 策略）、`sshd` 配置错误、`sudoers` 写坏、防火墙误封 22 端口——这些情况下 SSH 已无法进入，但 `osp-agent` 若以服务账号（如 systemd 的 root 或独立 service 用户）运行，进程仍可存活。此时在控制台下发修复命令即可"无登录"完成处置，例如：
+
+```bash
+# 场景 1：用户密码过期，重置密码使其可重新 SSH 登录
+chage -M 99999 -m 0 -E -1 alice        # 取消过期策略
+echo 'alice:NewPass@2026' | chpasswd  # 重置密码
+
+# 场景 2：账户被锁定，解锁
+passwd -u alice
+usermod -U alice
+# 若 PAM 层锁定（faillock），再清失败计数
+faillock --user alice --reset
+
+# 场景 3：sudoers 写坏导致 sudo 不可用，推送正确配置
+cat > /etc/sudoers.d/ops <<'EOF'
+%ops ALL=(ALL) NOPASSWD: ALL
+EOF
+chmod 440 /etc/sudoers.d/ops
+visudo -c   # 校验语法
+
+# 场景 4：sshd 配置错误 / 防火墙误封，恢复 22 端口可达
+sed -i 's/^#*Port .*/Port 22/' /etc/ssh/sshd_config
+systemctl restart sshd
+iptables -D INPUT -p tcp --dport 22 -j DROP 2>/dev/null; true
+```
+
+> 说明：以上命令的「执行力」取决于 `osp-agent` 的运行身份。若 agent 以 root（或具备 sudo NOPASSWD 的 service 用户）运行，可直接执行特权操作；否则需在任务中自带提权步骤。生产环境建议 agent 以受限 service 账号运行，敏感修复任务通过审批流程下发（见 §操作审批流）。
+
+#### 验证（端到端冒烟测试）
+- 协议与 agent 行为由 `backend/internal/osp/e2e_test.go` 的 `TestE2ESmoke` 端到端验证：以真实 `osp-agent` 二进制为子进程，连接一个复用同源 osp 握手/帧逻辑的测试控制台，覆盖 **加密握手 + 服务端 RSA-PSS 签名校验（防中间人）+ 加密心跳上报 + 任务下发→真实命令执行→结果回收（stdout/退出码透传）**。
+- 运行方式（需先构建 agent 二进制）：
+  ```bash
+  cd backend
+  go build -o dist/osp-agent ./cmd/agent          # Linux/macOS 去掉 .exe
+  OSP_AGENT_BIN=dist/osp-agent go test ./internal/osp/ -run TestE2ESmoke -v
+  ```
+- 协议层单测（`TestProtocol*`）另覆盖 ECDH 密钥协商、HKDF 派生一致性、AES-256-GCM 帧编解码与 seq 防重放。
+
 ---
 
 ## 未来规划
@@ -192,7 +274,7 @@ boat是一个基于 Go 语言开发的企业级运维管理系统，提供主机
 - [ ] 命令审计规则（正则匹配敏感命令告警）
 - [ ] 录像对象存储（OSS/S3）
 - [x] 定时任务 / Cron 作业调度
-- [ ] 主机性能监控与告警（CPU/内存/磁盘/网络）
+- [x] 主机性能监控（OSP Agent 实时上报 CPU/内存/磁盘/负载，离线自动判定）；**告警引擎（阈值触发 / 通知）为后续增强**
 
 ### 长期规划 (v2.0)
 - [ ] Kubernetes 集群管理
@@ -219,6 +301,7 @@ boat是一个基于 Go 语言开发的企业级运维管理系统，提供主机
 | JWT | 3.x | 身份认证 |
 | WebSocket | - | 实时通信 |
 | gliderlabs/ssh | 0.3+ | SSH 服务器 |
+| OSP 加密协议 | 自研 | 执行机管控自定义端口协议（ECDH P-256 + AES-256-GCM） |
 
 ### 前端
 | 技术 | 版本 | 说明 |
@@ -287,6 +370,7 @@ npm run build && npm run preview
 boat/
 ├── backend/                 # Go + Gin + GORM 后端
 │   ├── cmd/server/          # 入口 main.go
+│   ├── cmd/agent/           # osp-agent 执行机代理（独立二进制，可交叉编译部署到各节点）
 │   ├── configs/             # 配置文件
 │   └── internal/
 │       ├── config/  database/  model/  utils/
@@ -294,6 +378,7 @@ boat/
 │       ├── middleware/      # JWT / 权限 / CORS
 │       ├── controller/      # 各业务 Handler（含 Web Terminal WS）
 │       ├── ssh/             # SSH 客户端（连接/执行/PTY）
+│       ├── osp/             # OSP 加密协议 + 服务端监听器/连接 Hub
 │       └── service/         # 种子数据
 ├── web/                     # Vue3 + TS + Vite 前端
 │   └── src/{router,store,api,layout,views}
@@ -311,8 +396,8 @@ boat/
 docker compose up -d --build
 ```
 
-- **后端镜像** `backend/Dockerfile`：多阶段构建，运行时基于 `python:3.12-slim`（内置 python3，供平台本地调用 python3 执行脚本/插件），暴露 `8080`（API）与 `2222`（SSH 堡垒机）。
-- **前端镜像** `web/Dockerfile`：基于 `node:22-alpine` 构建，由 `nginx:1.27-alpine` 托管静态产物；`web/nginx.conf` 将 `/api` 反向代理到后端服务 `backend:8080`，并支持 SPA 路由回退。
+- **后端镜像** `backend/Dockerfile`：多阶段构建，运行时基于 `python:3.12-slim`（内置 python3，供平台本地调用 python3 执行脚本/插件）；除服务程序 `boat` 外还一并编译 `osp-agent` 执行机代理（产物置于 `/app/dist/osp-agent`，供控制台「接入指引」下载）。暴露 `8080`（API）、`2222`（SSH 堡垒机）与 `9090`（OSP Agent 加密通道）。
+- **前端镜像** `web/Dockerfile`：构建阶段基于 `node:24-bookworm-slim`（glibc，规避 Node 22/24 Alpine/musl 镜像上 npm 已知崩溃 `Exit handler never called!`），由 `nginx:1.30-alpine` 托管静态产物；`web/nginx.conf` 将 `/api` 反向代理到后端服务 `backend:8080`，并支持 SPA 路由回退。
 - **访问入口**：前端 `http://<宿主机>:8088`，后端 API `http://<宿主机>:8080`。
 - **配置注入**：后端 `config.go` 支持 `BOAT_` 前缀环境变量覆盖配置文件中的 DB/Redis 主机——`BOAT_MYSQL_HOST` / `BOAT_MYSQL_PORT` / `BOAT_REDIS_HOST` / `BOAT_REDIS_PORT`；compose 中已默认指向 `mysql` / `redis` 服务名，无需改动 `config.yaml`。
 - **默认账号**：平台 `admin / admin123`；MySQL `root / Root@123456`（与 `config.yaml`、redis `requirepass 123456` 对齐）。
@@ -337,6 +422,7 @@ docker compose up -d --build
 | RDP / VNC / 审批流 | ✅（审批流） | 操作审批流：提交→审批人通过→自动执行并关联交易执行记录；RDP/VNC 见未来规划 |
 | MFA 多因素认证 | ✅ | 基于 TOTP 的两步验证：登录二次校验、密钥 RSA 加密存储、认证器扫码绑定、自助启用/关闭 |
 | 录像在线回放播放器 | ✅ | 前端 asciinema v2 播放器（xterm 实现，支持暂停/继续/重新播放/倍速），按会话拉取 `.cast` 回放 |
+| OSP Agent 执行机管控 | ✅ | 自定义端口 9090 自研加密协议（ECDH P-256 + AES-256-GCM + RSA-PSS 防中间人 + 接入令牌）；`osp-agent` 反向回连常驻，控制台下发命令/脚本任务并回收 stdout/exit code，实时监控节点存活与 CPU/内存/磁盘/负载；断线自动重连，令牌可重置/强制踢下线；覆盖 SSH 不可达时的应急无登录管控 |
 
 ### 使用 SSH 堡垒机
 后端启动后会监听 `configs/config.yaml` 中 `bastion.port`（默认 2222）。用系统 SSH 客户端连接：

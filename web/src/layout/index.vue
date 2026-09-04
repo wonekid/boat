@@ -127,6 +127,10 @@ const menus = [
     { title: '定时任务', path: 'task/schedule', icon: 'Timer' },
     { title: '操作审批', path: 'task/approval', icon: 'Stamp' },
   ]},
+  { title: 'Agent管控', path: 'agent', icon: 'Platform', children: [
+    { title: '执行机节点', path: 'agent/node', icon: 'Monitor' },
+    { title: 'Agent任务下发', path: 'agent/task', icon: 'Promotion' },
+  ]},
 ]
 
 const activeMenu = computed(() => route.path)

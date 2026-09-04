@@ -46,6 +46,7 @@ func Seed() error {
 	seedMenus()
 	seedScheduleMenu()
 	seedApprovalMenu()
+	seedAgentMenu()
 	fixMenuParents()
 
 	// 高危指令内置规则
@@ -62,7 +63,8 @@ func fixMenuParents() {
 		"主机管理": "资产管理", "凭证管理": "资产管理", "主机分组": "资产管理", "授权管理": "资产管理",
 		"Web终端": "运维中心", "会话审计": "运维中心", "操作日志": "运维中心",
 		"高危指令": "安全中心",
-		"脚本库": "任务编排", "任务模板": "任务编排", "任务执行": "任务编排", "定时任务": "任务编排", "操作审批": "任务编排",
+		"脚本库":  "任务编排", "任务模板": "任务编排", "任务执行": "任务编排", "定时任务": "任务编排", "操作审批": "任务编排",
+		"执行机节点": "Agent管控", "Agent任务下发": "Agent管控",
 	}
 	var all []model.Menu
 	database.DB.Find(&all)
@@ -84,15 +86,15 @@ func fixMenuParents() {
 func seedScheduleMenu() {
 	var m model.Menu
 	database.DB.Where("path = ?", "/task/schedule").FirstOrCreate(&m, model.Menu{
-		ParentID:  21, // 初值；fixMenuParents 会按名称校正为「任务编排」
-		Name:      "定时任务",
-		Type:      2,
+		ParentID:   21, // 初值；fixMenuParents 会按名称校正为「任务编排」
+		Name:       "定时任务",
+		Type:       2,
 		Permission: "task:schedule:list",
-		Path:      "/task/schedule",
-		Component: "views/task/schedule",
-		Icon:      "Timer",
-		Sort:      4,
-		Status:    1,
+		Path:       "/task/schedule",
+		Component:  "views/task/schedule",
+		Icon:       "Timer",
+		Sort:       4,
+		Status:     1,
 	})
 	// 授予超级管理员
 	var super model.Role
@@ -127,6 +129,57 @@ func seedApprovalMenu() {
 		database.DB.Model(&super).Association("Menus").Replace(all)
 	}
 	log.Println("[seed] 已确保操作审批菜单存在")
+}
+
+// seedAgentMenu 幂等补充「Agent管控」目录与子菜单权限点
+// （OSP 执行机管控：自定义端口加密协议，用于下发命令/脚本任务与节点实时监控）
+func seedAgentMenu() {
+	var dir model.Menu
+	database.DB.Where("path = ?", "/agent").FirstOrCreate(&dir, model.Menu{
+		ParentID: 0,
+		Name:     "Agent管控",
+		Type:     1,
+		Path:     "/agent",
+		Icon:     "Platform",
+		Sort:     7,
+		Status:   1,
+	})
+	var node model.Menu
+	database.DB.Where("path = ?", "/agent/node").FirstOrCreate(&node, model.Menu{
+		ParentID:   dir.ID,
+		Name:       "执行机节点",
+		Type:       2,
+		Permission: "agent:node:list",
+		Path:       "/agent/node",
+		Component:  "views/agent/node",
+		Icon:       "Monitor",
+		Sort:       1,
+		Status:     1,
+	})
+	var task model.Menu
+	database.DB.Where("path = ?", "/agent/task").FirstOrCreate(&task, model.Menu{
+		ParentID:   dir.ID,
+		Name:       "Agent任务下发",
+		Type:       2,
+		Permission: "agent:task:list",
+		Path:       "/agent/task",
+		Component:  "views/agent/task",
+		Icon:       "Promotion",
+		Sort:       2,
+		Status:     1,
+	})
+	grantMenusToSuper()
+	log.Println("[seed] 已确保 Agent管控 菜单存在")
+}
+
+// grantMenusToSuper 将全部菜单授权给超级管理员角色
+func grantMenusToSuper() {
+	var super model.Role
+	if err := database.DB.Where("code = ?", "superadmin").First(&super).Error; err == nil {
+		var all []model.Menu
+		database.DB.Find(&all)
+		database.DB.Model(&super).Association("Menus").Replace(all)
+	}
 }
 
 func seedMenus() {

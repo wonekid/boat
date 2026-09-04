@@ -12,6 +12,7 @@ import (
 	"boat/internal/controller"
 	"boat/internal/database"
 	"boat/internal/middleware"
+	"boat/internal/osp"
 	"boat/internal/router"
 	"boat/internal/scheduler"
 	"boat/internal/service"
@@ -54,6 +55,24 @@ func main() {
 	// 定时任务调度器（注入执行器，加载启用中的任务）
 	scheduler.Executor = controller.LaunchExecution
 	scheduler.Init()
+
+	// OSP Agent 服务：自定义端口 + 自研加密协议，执行机 agent 反向回连，
+	// 用于下发命令/脚本任务与实时节点监控（SSH 不可登录时的应急控制通道）
+	if config.Global.OSP.Enabled {
+		osp.Init(osp.Options{
+			Port:             config.Global.OSP.Port,
+			Heartbeat:        config.Global.OSP.Heartbeat,
+			OfflineAfter:     config.Global.OSP.OfflineAfter,
+			HandshakeTimeout: config.Global.OSP.HandshakeTimeout,
+			DBThrottle:       config.Global.OSP.DBThrottle,
+			Enabled:          true,
+		})
+		go func() {
+			if err := osp.Default().Start(); err != nil {
+				log.Printf("[osp] OSP 服务启动失败: %v", err)
+			}
+		}()
+	}
 
 	// HTTP 服务
 	gin.SetMode(config.Global.Server.Mode)

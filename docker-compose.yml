@@ -44,6 +44,7 @@ services:
     ports:
       - "8080:8080"   # HTTP API
       - "2222:2222"   # SSH 堡垒机
+      - "9090:9090"   # OSP Agent 通道（自研加密协议，执行机 agent 主动外连）
     depends_on:
       - mysql
       - redis

@@ -227,10 +227,74 @@ type ApprovalTask struct {
 	DecidedAt     *time.Time `json:"decidedAt"`
 }
 
+// AgentNode OSP 执行机 Agent 节点（执行机主动外连，无需开放入站端口）
+type AgentNode struct {
+	BaseModel
+	Name         string     `json:"name" gorm:"size:128;not null"`
+	Hostname     string     `json:"hostname" gorm:"size:128"`
+	IP           string     `json:"ip" gorm:"size:64;index"`
+	OS           string     `json:"os" gorm:"size:32"`   // linux|windows|darwin
+	Arch         string     `json:"arch" gorm:"size:32"` // amd64|arm64...
+	Token        string     `json:"token" gorm:"size:128;uniqueIndex;not null"`
+	Status       string     `json:"status" gorm:"size:16;default:offline;index"` // online|offline
+	Enabled      int        `json:"enabled" gorm:"default:1"`                    // 1启用 0禁用（禁用后拒绝接入）
+	Labels       string     `json:"labels" gorm:"size:255"`                      // 标签，逗号分隔（可按环境/业务圈选节点）
+	Version      string     `json:"version" gorm:"size:32"`                      // Agent 版本
+	RegisteredAt *time.Time `json:"registeredAt"`                                // 首次接入时间
+	LastSeenAt   *time.Time `json:"lastSeenAt" gorm:"index"`                     // 最近心跳
+	// 实时指标（心跳上报刷新，用于控制台节点监控）
+	CPUUsage  float64 `json:"cpuUsage"`  // CPU 使用率 %
+	MemUsage  float64 `json:"memUsage"`  // 内存使用率 %
+	DiskUsage float64 `json:"diskUsage"` // 根分区使用率 %
+	LoadAvg   string  `json:"loadAvg" gorm:"size:64"`
+	Uptime    int64   `json:"uptime"`    // 已运行秒数
+	MemTotal  uint64  `json:"memTotal"`  // MB
+	MemUsed   uint64  `json:"memUsed"`   // MB
+	DiskTotal uint64  `json:"diskTotal"` // GB
+	DiskUsed  uint64  `json:"diskUsed"`  // GB
+	Remark    string  `json:"remark" gorm:"size:255"`
+}
+
+// AgentTask OSP 任务（控制台下发给执行机的命令/脚本）
+type AgentTask struct {
+	BaseModel
+	Name       string     `json:"name" gorm:"size:128"`
+	Type       string     `json:"type" gorm:"size:16"` // command|script
+	Lang       string     `json:"lang" gorm:"size:16"` // shell|python|powershell|batch
+	Content    string     `json:"content" gorm:"type:text"`
+	ScriptID   uint       `json:"scriptId"`                              // 脚本库来源（可为空）
+	Timeout    int        `json:"timeout" gorm:"default:120"`            // 单节点超时秒数
+	RunAsUser  string     `json:"runAsUser" gorm:"size:64"`              // 指定执行用户（空=Agent 自身运行用户）
+	NodeIDs    string     `json:"nodeIds" gorm:"type:text"`              // JSON 数组
+	Status     string     `json:"status" gorm:"size:16;default:running"` // running|success|partial|failed|canceled
+	Progress   string     `json:"progress" gorm:"size:32"`               // 完成进度，如 3/5
+	CreatedBy  string     `json:"createdBy" gorm:"size:64"`
+	StartedAt  *time.Time `json:"startedAt"`
+	FinishedAt *time.Time `json:"finishedAt"`
+}
+
+// AgentTaskResult 单节点执行结果
+type AgentTaskResult struct {
+	BaseModel
+	TaskID     uint       `json:"taskId" gorm:"index"`
+	NodeID     uint       `json:"nodeId" gorm:"index"`
+	NodeName   string     `json:"nodeName" gorm:"size:128"`
+	NodeIP     string     `json:"nodeIp" gorm:"size:64"`
+	Status     string     `json:"status" gorm:"size:16;default:pending"` // pending|running|success|failed|timeout|offline|canceled
+	ExitCode   int        `json:"exitCode"`
+	Stdout     string     `json:"stdout" gorm:"type:text"`
+	Stderr     string     `json:"stderr" gorm:"type:text"`
+	Error      string     `json:"error" gorm:"type:text"`
+	Duration   int64      `json:"duration"` // 毫秒
+	StartedAt  *time.Time `json:"startedAt"`
+	FinishedAt *time.Time `json:"finishedAt"`
+}
+
 // 全部可迁移模型
 var AllModels = []interface{}{
 	&User{}, &Role{}, &Menu{}, &Dept{},
 	&Host{}, &Credential{}, &HostGroup{}, &Authorization{},
 	&Session{}, &AuditLog{}, &HighRiskCommand{},
 	&Script{}, &TaskTemplate{}, &TaskExecution{}, &TaskSchedule{}, &ApprovalTask{},
+	&AgentNode{}, &AgentTask{}, &AgentTaskResult{},
 }

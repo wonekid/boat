@@ -29,6 +29,16 @@ bastion:
   port: 2222
   host-key-path: "configs/ssh_host_key"
 
+# OSP Agent 服务（执行机通过自定义端口加密回连，走自研 OSP 协议，非 SSH/HTTP）
+# 执行机上的 osp-agent 主动外连本端口长连接待命，控制台经此通道下发命令/脚本任务并接收心跳指标。
+osp:
+  enabled: true
+  port: 9090            # 自定义监听端口（需在防火墙/容器映射中放行）
+  heartbeat: 10         # 下发给 Agent 的心跳周期（秒）
+  offline-after: 35     # 超过该秒数未收到心跳即判定节点离线
+  handshake-timeout: 20 # 握手超时（秒）
+  db-throttle: 5        # 心跳写库节流间隔（秒），降低高频写库压力
+
 # 会话录像存储根目录
 record:
   path: "data/records"

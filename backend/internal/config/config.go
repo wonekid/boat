@@ -14,6 +14,7 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	Bastion  BastionConfig  `mapstructure:"bastion"`
+	OSP      OSPConfig      `mapstructure:"osp"`
 	Record   RecordConfig   `mapstructure:"record"`
 	Log      LogConfig      `mapstructure:"log"`
 	Security SecurityConfig `mapstructure:"security"`
@@ -63,6 +64,41 @@ type BastionConfig struct {
 	HostKeyPath string `mapstructure:"host-key-path"`
 }
 
+// OSPConfig OSP Agent 服务配置（执行机通过自定义端口加密回连）
+type OSPConfig struct {
+	// Enabled 是否启用 OSP 服务
+	Enabled bool `mapstructure:"enabled"`
+	// Port 自定义监听端口（非 SSH、非 HTTP，走自研 OSP 加密协议）
+	Port int `mapstructure:"port"`
+	// Heartbeat 下发给 Agent 的心跳周期（秒）
+	Heartbeat int `mapstructure:"heartbeat"`
+	// OfflineAfter 超过该秒数未心跳判定离线
+	OfflineAfter int `mapstructure:"offline-after"`
+	// HandshakeTimeout 握手超时（秒）
+	HandshakeTimeout int `mapstructure:"handshake-timeout"`
+	// DBThrottle 心跳写库节流间隔（秒）
+	DBThrottle int `mapstructure:"db-throttle"`
+}
+
+// applyDefaults 补齐未配置项
+func (o *OSPConfig) applyDefaults() {
+	if o.Port == 0 {
+		o.Port = 9090
+	}
+	if o.Heartbeat == 0 {
+		o.Heartbeat = 10
+	}
+	if o.OfflineAfter == 0 {
+		o.OfflineAfter = 35
+	}
+	if o.HandshakeTimeout == 0 {
+		o.HandshakeTimeout = 20
+	}
+	if o.DBThrottle == 0 {
+		o.DBThrottle = 5
+	}
+}
+
 type RecordConfig struct {
 	Path string `mapstructure:"path"`
 }
@@ -103,6 +139,10 @@ func Init(path string) error {
 	}
 	if err := v.Unmarshal(&Global); err != nil {
 		return fmt.Errorf("解析配置文件失败: %w", err)
+	}
+	Global.OSP.applyDefaults()
+	if bastionPort := Global.Bastion.Port; bastionPort == 0 {
+		Global.Bastion.Port = 2222
 	}
 	return nil
 }

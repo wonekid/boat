@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -94,6 +95,46 @@ func PasswordHash(pwd string) string {
 
 func PasswordVerify(pwd, hash string) bool {
 	return PasswordHash(pwd) == hash
+}
+
+// SignData 使用平台 RSA 私钥签名（RSA-PSS + SHA256），返回 base64。
+// 用于 OSP Agent 握手时服务端对密钥协商数据签名，防止中间人攻击。
+func SignData(data []byte) (string, error) {
+	if rsaPrivateKey == nil {
+		return "", errors.New("RSA 未初始化")
+	}
+	hashed := sha256.Sum256(data)
+	sig, err := rsa.SignPSS(rand.Reader, rsaPrivateKey, crypto.SHA256, hashed[:], nil)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(sig), nil
+}
+
+// VerifySignature 使用平台 RSA 公钥验签（与 SignData 配对）
+func VerifySignature(data []byte, sigB64 string) error {
+	if rsaPrivateKey == nil {
+		return errors.New("RSA 未初始化")
+	}
+	sig, err := base64.StdEncoding.DecodeString(sigB64)
+	if err != nil {
+		return errors.New("签名格式非法")
+	}
+	hashed := sha256.Sum256(data)
+	return rsa.VerifyPSS(&rsaPrivateKey.PublicKey, crypto.SHA256, hashed[:], sig, nil)
+}
+
+// PublicKeyPEM 导出服务端 RSA 公钥 PEM（下发到 Agent 侧，用于校验握手签名）
+func PublicKeyPEM() (string, error) {
+	if rsaPrivateKey == nil {
+		return "", errors.New("RSA 未初始化")
+	}
+	der, err := x509.MarshalPKIXPublicKey(&rsaPrivateKey.PublicKey)
+	if err != nil {
+		return "", err
+	}
+	block := &pem.Block{Type: "PUBLIC KEY", Bytes: der}
+	return string(pem.EncodeToMemory(block)), nil
 }
 
 // ParsePrivateKey 解析 PEM 私钥为 ssh.Signer（用于密钥登录）
